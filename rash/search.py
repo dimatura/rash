@@ -215,7 +215,7 @@ def search_add_arguments(parent_parser):
         that matches to given glob pattern.""")
     # "global" filters
     parser.add_argument(
-        '--limit', '-l', metavar='NUM', type=int, default=20,
+        '--limit', '-l', metavar='NUM', type=int, default=40,
         help='maximum number of history to show. -1 means no limit.')
     parser.add_argument(
         '--no-unique', '-a', dest='unique', action='store_false', default=True,

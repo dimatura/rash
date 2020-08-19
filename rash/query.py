@@ -89,6 +89,7 @@ def preprocess_kwds(kwds):
     kwds['match_pattern'] = kwds['match_pattern'] + less_strict_pattern
 
     if not kwds['sort_by']:
-        kwds['sort_by'] = ['count']
+        kwds['sort_by'] = ['start']
+
     kwds['sort_by'] = [SORT_KEY_SYNONYMS[k] for k in kwds['sort_by']]
     return kwds
