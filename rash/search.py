@@ -45,6 +45,11 @@ def search_run(output, **kwds):
 
     db = DataBase(cfstore.db_path)
     for crec in db.search_command_record(**preprocess_kwds(kwds)):
+        # output.write(format.format(**crec.__dict__))
+        # quick hack for ascii printability
+        for k, v in crec.__dict__.items():
+            if isinstance(v, unicode):
+                crec.__dict__[k] = v.encode('ascii', errors='replace')
         output.write(format.format(**crec.__dict__))
 
 
