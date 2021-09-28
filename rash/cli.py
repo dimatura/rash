@@ -84,9 +84,9 @@ def main(args=None):
         # + MODULE.commands
         + misc_commands
     )
-    ns = parser.parse_args(args=args)
-    applyargs = lambda func, **kwds: func(**kwds)
-    applyargs(**vars(ns))
+    ns = vars(parser.parse_args(args=args))
+    func = ns.pop('func')
+    func(**ns)
 
 
 def version_run():
