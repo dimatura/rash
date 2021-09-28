@@ -67,7 +67,8 @@ def get_formatter(
     elif with_session_id:
         format = "{session_history_id:>5}  {command}\n"
     else:
-        format = format.decode('string_escape')
+        # format = format.decode('string_escape')
+        format = bytes(format, 'utf8').decode('unicode_escape')
     return format
 
 
