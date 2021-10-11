@@ -9,12 +9,12 @@ PY3 = (sys.version_info[0] >= 3)
 
 install_requires = [
     'argparse',
+    'percol',
 ]
 if not PY3:
     install_requires.extend([
         'parsedatetime',
         'watchdog',
-        'percol',
     ])
 
 
