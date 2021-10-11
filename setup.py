@@ -14,6 +14,7 @@ if not PY3:
     install_requires.extend([
         'parsedatetime',
         'watchdog',
+        'percol',
     ])
 
 

@@ -85,8 +85,11 @@ def main(args=None):
         + misc_commands
     )
     ns = vars(parser.parse_args(args=args))
-    func = ns.pop('func')
-    func(**ns)
+    if 'func' in ns:
+        func = ns.pop('func')
+        func(**ns)
+    else:
+        print(parser.format_help())
 
 
 def version_run():
