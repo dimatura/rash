@@ -14,6 +14,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import io
 import re
 import shlex
 
@@ -71,7 +72,8 @@ class RashFinder(FinderMultiQueryString):
     def find(self, query, collection=None):
         try:
             # shlex < 2.7.3 does not work with unicode:
-            args = self.base_query + shlex.split(query.encode())
+            # args = self.base_query + shlex.split(query.encode())
+            args = self.base_query + shlex.split(query)
             ns = self.__parser.parse_args(args)
             kwds = preprocess_kwds(expand_query(self.rashconfig, vars(ns)))
         except (ValueError, SyntaxError):
@@ -125,7 +127,9 @@ def launch_isearch(cfstore, rcfile=None, input_encoding=None,
     default_query = default(query, config.isearch.query)
 
     ttyname = tty.get_ttyname()
-    with open(ttyname, "r+w") as tty_f:
+
+    # DMS: workaround for seekable streams in py3, copy-pasted from python maliling list
+    with io.TextIOWrapper(open(ttyname, "r+b", buffering=0)) as tty_f:
         with Percol(descriptors=tty.reconnect_descriptors(tty_f),
                     finder=RashFinder,
                     actions=(actions.output_to_stdout,),
