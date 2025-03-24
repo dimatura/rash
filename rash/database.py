@@ -328,7 +328,7 @@ class DataBase(object):
 
     def _get_maybe_new_id(self, db, table, columns):
         kvlist = list(columns.items())
-        values = [v for (_, v) in kvlist]
+        values = [v.encode('utf-8', 'surrogatepass').decode('utf-8', 'ignore') for (_, v) in kvlist]
         sql_select = 'SELECT id FROM "{0}" WHERE {1}'.format(
             table,
             ' AND '.join(map('"{0[0]}" = ?'.format, kvlist)),
