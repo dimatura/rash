@@ -1,4 +1,4 @@
-# Copyright (C) 2013-  Takafumi Arakaki
+# Copyright (C) 2013-  Takafumi Arakaki, Daniel Maturana+Opus4.5
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
