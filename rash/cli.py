@@ -72,6 +72,7 @@ def main(args=None):
     from . import show
     from . import index
     from . import isearch
+    from . import export
     # from . import MODULE
     parser = get_parser(
         init.commands
@@ -81,6 +82,7 @@ def main(args=None):
         + show.commands
         + index.commands
         + isearch.commands
+        + export.commands
         # + MODULE.commands
         + misc_commands
     )
