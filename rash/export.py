@@ -21,7 +21,7 @@ import sys
 from datetime import datetime
 
 
-SUPPORTED_FORMATS = ['bash']
+SUPPORTED_FORMATS = ['bash', 'xonsh']
 
 
 def export_run(format, output, **kwds):
@@ -30,6 +30,7 @@ def export_run(format, output, **kwds):
 
     Supported formats:
     - bash: Bash history format with timestamps (HISTTIMEFORMAT compatible)
+    - xonsh: Xonsh JSON history format
 
     """
     from .config import ConfigStore
@@ -56,6 +57,7 @@ def get_exporter(format):
     """Get the exporter function for the given format."""
     exporters = {
         'bash': export_bash,
+        'xonsh': export_xonsh,
     }
     if format not in exporters:
         raise ValueError("Unsupported format: {0}. Supported formats: {1}".format(
@@ -102,6 +104,121 @@ def export_bash(db, output):
     except BrokenPipeError:
         # Handle broken pipe gracefully (e.g., when piped to head)
         pass
+
+
+def export_xonsh(db, output):
+    """
+    Export history to xonsh JSON history format.
+
+    Xonsh stores history as JSON files with session metadata and commands.
+    Each session is a separate JSON object. Since rash tracks sessions,
+    we export one JSON object per rash session.
+
+    Format:
+        {
+            "env": {},
+            "sessionid": "uuid4_string",
+            "ts": [session_start, session_stop],
+            "locked": false,
+            "cmds": [
+                {"inp": "command", "ts": [start, stop], "rtn": exit_code},
+                ...
+            ]
+        }
+    """
+    import json
+    import uuid
+    from collections import defaultdict
+
+    # Group commands by session
+    records = list(get_all_command_records(db))
+    sessions = defaultdict(list)
+    for crec in records:
+        if not crec.command:
+            continue
+        sessions[crec.session_history_id].append(crec)
+
+    # Sort sessions by their first command's timestamp
+    sorted_session_ids = sorted(
+        sessions.keys(),
+        key=lambda sid: get_sort_timestamp(sessions[sid][0].start) if sessions[sid] else datetime.min
+    )
+
+    try:
+        for session_id in sorted_session_ids:
+            cmds = sessions[session_id]
+            if not cmds:
+                continue
+
+            # Sort commands within session by start time
+            cmds.sort(key=lambda r: get_sort_timestamp(r.start))
+
+            # Build session timestamps from first and last command
+            session_start = datetime_to_unix_float(cmds[0].start)
+            session_stop = datetime_to_unix_float(cmds[-1].stop) if cmds[-1].stop else session_start
+
+            # Build command list
+            cmd_list = []
+            for crec in cmds:
+                cmd_entry = {
+                    "inp": crec.command,
+                    "ts": [
+                        datetime_to_unix_float(crec.start),
+                        datetime_to_unix_float(crec.stop) if crec.stop else datetime_to_unix_float(crec.start)
+                    ],
+                }
+                if crec.exit_code is not None:
+                    cmd_entry["rtn"] = crec.exit_code
+                cmd_list.append(cmd_entry)
+
+            # Build session object
+            session_obj = {
+                "env": {},
+                "sessionid": str(uuid.uuid4()),
+                "ts": [session_start, session_stop],
+                "locked": False,
+                "cmds": cmd_list,
+            }
+
+            output.write(json.dumps(session_obj, ensure_ascii=False))
+            output.write("\n")
+    except BrokenPipeError:
+        pass
+
+
+def datetime_to_unix_float(dt):
+    """
+    Convert datetime to Unix timestamp as float (for sub-second precision).
+
+    Handles both datetime objects and strings that SQLite might return.
+    """
+    if dt is None:
+        return 0.0
+    if isinstance(dt, datetime):
+        return dt.timestamp()
+    if isinstance(dt, str):
+        # Parse SQLite datetime string format: "YYYY-MM-DD HH:MM:SS"
+        try:
+            parsed = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
+            return parsed.timestamp()
+        except ValueError:
+            pass
+        # Try with microseconds
+        try:
+            parsed = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S.%f")
+            return parsed.timestamp()
+        except ValueError:
+            pass
+        # Maybe it's a numeric string
+        try:
+            return float(dt)
+        except ValueError:
+            return 0.0
+    # Assume it's already a numeric timestamp
+    try:
+        return float(dt)
+    except (ValueError, TypeError):
+        return 0.0
 
 
 def get_all_command_records(db):
