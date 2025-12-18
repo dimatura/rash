@@ -30,14 +30,23 @@ def export_run(format, output, **kwds):
 
     Supported formats:
     - bash: Bash history format with timestamps (HISTTIMEFORMAT compatible)
-    - xonsh: Xonsh JSON history format
+    - xonsh: Xonsh JSON history format (outputs to a directory)
 
     """
+    import os
     from .config import ConfigStore
     from .database import DataBase
 
     cfstore = ConfigStore()
     db = DataBase(cfstore.db_path)
+
+    # Xonsh format outputs to a directory, not a file
+    if format == 'xonsh':
+        if output == '-':
+            raise ValueError("xonsh format requires an output directory, not stdout")
+        os.makedirs(output, exist_ok=True)
+        export_xonsh(db, output)
+        return
 
     # Open output file with UTF-8 encoding
     if output == '-':
@@ -106,27 +115,31 @@ def export_bash(db, output):
         pass
 
 
-def export_xonsh(db, output):
+def export_xonsh(db, output_dir):
     """
     Export history to xonsh JSON history format.
 
     Xonsh stores history as JSON files with session metadata and commands.
-    Each session is a separate JSON object. Since rash tracks sessions,
-    we export one JSON object per rash session.
+    Each session is exported to a separate file named xonsh-<sessionid>.json.
 
-    Format:
+    File format:
         {
-            "env": {},
-            "sessionid": "uuid4_string",
-            "ts": [session_start, session_stop],
-            "locked": false,
-            "cmds": [
-                {"inp": "command", "ts": [start, stop], "rtn": exit_code},
-                ...
-            ]
+            "locs": [],
+            "index": {},
+            "data": {
+                "cmds": [
+                    {"cwd": "/path", "inp": "command", "rtn": exit_code, "ts": [start, stop]},
+                    ...
+                ],
+                "env": {},
+                "locked": false,
+                "sessionid": "uuid4_string",
+                "ts": [session_start, session_stop]
+            }
         }
     """
     import json
+    import os
     import uuid
     from collections import defaultdict
 
@@ -138,52 +151,56 @@ def export_xonsh(db, output):
             continue
         sessions[crec.session_history_id].append(crec)
 
-    # Sort sessions by their first command's timestamp
-    sorted_session_ids = sorted(
-        sessions.keys(),
-        key=lambda sid: get_sort_timestamp(sessions[sid][0].start) if sessions[sid] else datetime.min
-    )
+    for session_id, cmds in sessions.items():
+        if not cmds:
+            continue
 
-    try:
-        for session_id in sorted_session_ids:
-            cmds = sessions[session_id]
-            if not cmds:
-                continue
+        # Sort commands within session by start time
+        cmds.sort(key=lambda r: get_sort_timestamp(r.start))
 
-            # Sort commands within session by start time
-            cmds.sort(key=lambda r: get_sort_timestamp(r.start))
+        # Build session timestamps from first and last command
+        session_start = datetime_to_unix_float(cmds[0].start)
+        session_stop = datetime_to_unix_float(cmds[-1].stop) if cmds[-1].stop else session_start
 
-            # Build session timestamps from first and last command
-            session_start = datetime_to_unix_float(cmds[0].start)
-            session_stop = datetime_to_unix_float(cmds[-1].stop) if cmds[-1].stop else session_start
+        # Generate a session id for xonsh
+        xonsh_session_id = str(uuid.uuid4())
 
-            # Build command list
-            cmd_list = []
-            for crec in cmds:
-                cmd_entry = {
-                    "inp": crec.command,
-                    "ts": [
-                        datetime_to_unix_float(crec.start),
-                        datetime_to_unix_float(crec.stop) if crec.stop else datetime_to_unix_float(crec.start)
-                    ],
-                }
-                if crec.exit_code is not None:
-                    cmd_entry["rtn"] = crec.exit_code
-                cmd_list.append(cmd_entry)
-
-            # Build session object
-            session_obj = {
-                "env": {},
-                "sessionid": str(uuid.uuid4()),
-                "ts": [session_start, session_stop],
-                "locked": False,
-                "cmds": cmd_list,
+        # Build command list
+        cmd_list = []
+        for crec in cmds:
+            cmd_entry = {
+                "cwd": (crec.cwd or "").rstrip("/"),
+                "inp": crec.command + "\n",
+                "rtn": crec.exit_code if crec.exit_code is not None else 0,
+                "ts": [
+                    datetime_to_unix_float(crec.start),
+                    datetime_to_unix_float(crec.stop) if crec.stop else datetime_to_unix_float(crec.start)
+                ],
             }
+            cmd_list.append(cmd_entry)
 
-            output.write(json.dumps(session_obj, ensure_ascii=False))
-            output.write("\n")
-    except BrokenPipeError:
-        pass
+        # Build session data
+        session_data = {
+            "cmds": cmd_list,
+            "env": {},
+            "locked": False,
+            "sessionid": xonsh_session_id,
+            "ts": [session_start, session_stop],
+        }
+
+        # Build full session object with locs and index
+        session_obj = {
+            "locs": [],
+            "index": {},
+            "data": session_data,
+        }
+
+        # Write to file named xonsh-<sessionid>.json
+        filename = "xonsh-{}.json".format(xonsh_session_id)
+        filepath = os.path.join(output_dir, filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(session_obj, f, ensure_ascii=False, indent=2)
+            f.write("\n")
 
 
 def datetime_to_unix_float(dt):
@@ -318,7 +335,7 @@ def export_add_arguments(parser):
             ', '.join(SUPPORTED_FORMATS)))
     parser.add_argument(
         'output', nargs='?', default='-',
-        help='Output file. Use - for stdout (default).')
+        help='Output file (bash) or directory (xonsh). Use - for stdout (bash only, default).')
 
 
 commands = [
